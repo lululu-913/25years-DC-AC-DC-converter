@@ -579,7 +579,7 @@ __interrupt void adcA1ISR(void)
                 pid1.Integral = 0.0f;                    // 无输出时清零积分, 保持M=8.0软启动
             }
             if (M >= 8.0f)  M = 8.0f;                    // M上限
-            if (M <= 1.90f) M = 1.90f;                   // M下限
+            if (M <= 1.50f) M = 1.50f;                   // M下限
         }
     }
     else                                                 // tag=0: 关断模式
@@ -938,11 +938,11 @@ void KEY_Control(int key)
         switch (key)
         {
             case KEY1_PRESS:
-                I_PID_REF += 0.05f;
+                I_PID_REF += 0.02f;
                 if (I_PID_REF > 4.0f) I_PID_REF = 4.0f;
                 break;
             case KEY2_PRESS:
-                I_PID_REF -= 0.05f;
+                I_PID_REF -= 0.02f;
                 if (I_PID_REF < 0.1f) I_PID_REF = 0.1f;
                 break;
             case KEY3_PRESS:
