@@ -102,9 +102,6 @@ float I_PID_REF = 2.0f;                                  // 电流内环参考�
 //********** ADC 采样值 **********//
 Uint16 adc_Uab = 0;                                      // ADCA SOC0 → ADCINA0 线电压 Uab
 Uint16 adc_Ubc = 0;                                      // ADCA SOC1 → ADCINA1 线电压 Ubc
-Uint16 adc_Uout = 0;                                     // ADCA SOC2 → ADCINA2 输出电压
-Uint16 adc_A3 = 0;                                       // ADCA SOC3 → ADCINA3 备用采样
-Uint16 adc_A4 = 0;                                       // ADCA SOC4 → ADCINA4 备用采样
 
 Uint16 adc_Ioa = 0;                                      // ADCB SOC0 → ADCINB0 A 相电流
 Uint16 adc_Iob = 0;                                      // ADCB SOC1 → ADCINB1 B 相电流
@@ -114,14 +111,12 @@ Uint16 adc_Ioc = 0;                                      // ADCB SOC2 → ADCINB
 float U_oa = 0, U_ob = 0, U_oc = 0;
 float I_oa = 0, I_ob = 0, I_oc = 0;
 float U_ab = 0, U_bc = 0;
-float U_out = 0;
 float middle_a = 0, middle_b = 0, middle_c = 0;
 float theta_a = 0, theta_b = 0, theta_c = 0;
 float Da = 0.4f, Db = 0.4f, Dc = 0.4f;
 float U_av = 0, I_av = 0;
 
 float U_bus_rms = 0;
-float U_out_rms = 0;
 float I_bus_rms = 0;
 float pid_out = 2.0f;
 float dbg_vcm_mod = 0.0f;                                // 三次谐波共模调制量: (mod_a+mod_b+mod_c)/3
@@ -146,7 +141,7 @@ float M = 2.2f;                                          // 调制比（反比�
 float freq = 50.0f;                                      // 当前输出频率
 
 //********** 有效值累加 **********//
-float sum1 = 0, sum2 = 0, sum3 = 0;
+float sum1 = 0, sum3 = 0;
 
 //********** PLL 锁相环变量 **********//
 float W0 = 314.1593f;                                    // 目标角速度 50Hz
@@ -294,12 +289,9 @@ __interrupt void adcA1ISR(void)
 {
     int overcurrent_now = 0;
 
-    // ===== Step 1: 读取 6 路 ADC 结果 =====
+    // ===== Step 1: 读取 5 路 ADC 结果 =====
     adc_Uab  = AdcaResultRegs.ADCRESULT0;                // ADCA SOC0→A0, 线电压 Uab
     adc_Ubc  = AdcaResultRegs.ADCRESULT1;                // ADCA SOC1→A1, 线电压 Ubc
-    adc_Uout = AdcaResultRegs.ADCRESULT2;                // ADCA SOC2→A2, 输出电压 U_out
-    adc_A3   = AdcaResultRegs.ADCRESULT3;                // ADCA SOC3→A3, 备用
-    adc_A4   = AdcaResultRegs.ADCRESULT4;                // ADCA SOC4→A4, 备用
     adc_Ioa  = AdcbResultRegs.ADCRESULT0;                // ADCB SOC0→B0, A相电流 I_oa
     adc_Iob  = AdcbResultRegs.ADCRESULT1;                // ADCB SOC1→B1, B相电流 I_ob
     adc_Ioc  = AdcbResultRegs.ADCRESULT2;                // ADCB SOC2→B2, C相电流 I_oc
@@ -308,16 +300,13 @@ __interrupt void adcA1ISR(void)
     // 校准公式: ADC = k×实际值 + b → 实际值 = (ADC - b)/k
     U_ab  = ((float)adc_Uab  - 2043.6f) / 36.499f;      // A0: y=36.499x+2043.6 → 线电压Uab (V)
     U_bc  = ((float)adc_Ubc  - 2047.3f) / 36.323f;      // A1: y=36.323x+2047.3 → 线电压Ubc (V)
-    U_out = ((float)adc_Uout - 2046.5f) / 36.167f;      // A2: y=36.167x+2046.5 → 输出电压U_out (V)
-    // A3: y=36.391x+2042.4, 备用通道暂不转换
-    // A4: 未标定, 原始值
     I_oa  = ((float)adc_Ioa  - 2050.2f) / 304.04f;      // B0: y=304.04x+2050.2 → A相电流 (A)
     I_ob  = ((float)adc_Iob  - 2032.1f) / 324.40f;      // B1: y=324.4x+2032.1  → B相电流 (A)
     I_oc  = ((float)adc_Ioc  - 2049.5f) / 327.40f;      // B2: y=327.4x+2049.5  → C相电流 (A)
 
     // ===== Step 3: 过流保护 (当前临时关闭; 恢复时打开OVERCURRENT_PROTECTION_ENABLED) =====
 #if OVERCURRENT_PROTECTION_ENABLED
-    overcurrent_now = ((fabsf(I_oa) >= 6.0f) || (fabsf(I_ob) >= 6.0f) || (fabsf(I_oc) >= 6.0f));
+    overcurrent_now = ((fabsf(I_oa) >= 4.0f) || (fabsf(I_ob) >= 4.0f) || (fabsf(I_oc) >= 4.0f));
     if (overcurrent_now)
     {
         if (overcurrent_count < OVERCURRENT_CONFIRM_COUNT)
@@ -458,7 +447,6 @@ __interrupt void adcA1ISR(void)
             I_PID_REF = TAG2_I_PID_REF;                  // 回馈模式固定线电流2A
             pid1.Integral = 0.0f;
             sum1 = 0.0f;
-            sum2 = 0.0f;
             sum3 = 0.0f;
             N_c1 = 0;
             if (overcurrent_now == 0)
@@ -559,7 +547,6 @@ __interrupt void adcA1ISR(void)
         {
             N_c1++;                                      // 采样计数器递增
             sum1 += U_av * U_av;                         // 累加U_av²
-            sum2 += U_out * U_out;                       // 累加U_out²
             sum3 += I_av * I_av;                         // 累加I_av²
         }
         else                                             // 一个完整窗口采集完毕
@@ -567,8 +554,6 @@ __interrupt void adcA1ISR(void)
             N_c1 = 0;                                    // 重置采样计数器
             U_bus_rms  = sqrtf(sum1 / (float)N);         // 相电压有效值 = √(ΣU²/N)
             sum1 = 0;                                    // 清零累加器
-            U_out_rms  = sqrtf(sum2 / (float)N);         // 输出电压有效值
-            sum2 = 0;
             I_bus_rms  = sqrtf(sum3 / (float)N);         // 相电流有效值
             sum3 = 0;
 
@@ -612,7 +597,6 @@ __interrupt void adcA1ISR(void)
         EPwm6Regs.AQCSFRC.bit.CSFA = 1;
         EPwm6Regs.AQCSFRC.bit.CSFB = 1;
         sum1 = 0;                                        // 清零电压累加器
-        sum2 = 0;
         sum3 = 0;                                        // 清零电流累加器
         N_c1 = 0;                                        // 重置采样计数
     }
@@ -938,11 +922,11 @@ void KEY_Control(int key)
         switch (key)
         {
             case KEY1_PRESS:
-                I_PID_REF += 0.01f;
-                if (I_PID_REF > 4.0f) I_PID_REF = 4.0f;
+                I_PID_REF += 0.005f;
+                if (I_PID_REF > 5.0f) I_PID_REF = 5.0f;
                 break;
             case KEY2_PRESS:
-                I_PID_REF -= 0.01f;
+                I_PID_REF -= 0.005f;
                 if (I_PID_REF < 0.1f) I_PID_REF = 0.1f;
                 break;
             case KEY3_PRESS:
@@ -1070,7 +1054,7 @@ void initADCSOC(void)
 {
     EALLOW;
 
-    // ADCA SOC 配置
+    // ADCA SOC 配置（仅 2 路：Uab, Ubc）
     AdcaRegs.ADCSOC0CTL.bit.CHSEL = 0;                  // SOC0 → A0 (U_ab)
     AdcaRegs.ADCSOC0CTL.bit.ACQPS = 9;
     AdcaRegs.ADCSOC0CTL.bit.TRIGSEL = 9;                // 触发源: EPWM3 SOCA
@@ -1079,19 +1063,7 @@ void initADCSOC(void)
     AdcaRegs.ADCSOC1CTL.bit.ACQPS = 9;
     AdcaRegs.ADCSOC1CTL.bit.TRIGSEL = 9;
 
-    AdcaRegs.ADCSOC2CTL.bit.CHSEL = 2;                  // SOC2 → A2 (U_out)
-    AdcaRegs.ADCSOC2CTL.bit.ACQPS = 9;
-    AdcaRegs.ADCSOC2CTL.bit.TRIGSEL = 9;
-
-    AdcaRegs.ADCSOC3CTL.bit.CHSEL = 3;                  // SOC3 → A3 (备用)
-    AdcaRegs.ADCSOC3CTL.bit.ACQPS = 9;
-    AdcaRegs.ADCSOC3CTL.bit.TRIGSEL = 9;
-
-    AdcaRegs.ADCSOC4CTL.bit.CHSEL = 4;                  // SOC4 → A4 (备用)
-    AdcaRegs.ADCSOC4CTL.bit.ACQPS = 9;
-    AdcaRegs.ADCSOC4CTL.bit.TRIGSEL = 9;
-
-    // ADCB SOC 配置
+    // ADCB SOC 配置（3 路：Ioa, Iob, Ioc）
     AdcbRegs.ADCSOC0CTL.bit.CHSEL = 0;                  // SOC0 → B0 (I_oa)
     AdcbRegs.ADCSOC0CTL.bit.ACQPS = 9;
     AdcbRegs.ADCSOC0CTL.bit.TRIGSEL = 9;
@@ -1104,8 +1076,8 @@ void initADCSOC(void)
     AdcbRegs.ADCSOC2CTL.bit.ACQPS = 9;
     AdcbRegs.ADCSOC2CTL.bit.TRIGSEL = 9;
 
-    // ADCA INT1 中断：SOC4 完成时触发（最后一个 ADCA SOC）
-    AdcaRegs.ADCINTSEL1N2.bit.INT1SEL = 4;
+    // ADCA INT1 中断：SOC1 完成时触发（最后一个 ADCA SOC）
+    AdcaRegs.ADCINTSEL1N2.bit.INT1SEL = 1;
     AdcaRegs.ADCINTSEL1N2.bit.INT1E = 1;
     AdcaRegs.ADCINTFLGCLR.bit.ADCINT1 = 1;
 
@@ -1418,41 +1390,41 @@ void EPWM7_Init(void)
     EPwm7Regs.ETPS.bit.INTPRD = ET_1ST;
 }
 
-void EPWM8_Init(void)
-{
-    EALLOW;
-    CpuSysRegs.PCLKCR2.bit.EPWM8 = 1;
-    EDIS;
+// void EPWM8_Init(void)
+// {
+//     EALLOW;
+//     CpuSysRegs.PCLKCR2.bit.EPWM8 = 1;
+//     EDIS;
 
-    EPwm8Regs.TBCTL.bit.SYNCOSEL = TB_SYNC_IN;
-    EPwm8Regs.TBCTL.bit.PHSEN = TB_ENABLE;
-    EPwm8Regs.TBPHS.all = 0;
-    EPwm8Regs.TBCTR = 0x0000;
-    EPwm8Regs.TBPRD = EPWM_TIMER_TBPRD;
-    EPwm8Regs.TBCTL.bit.CTRMODE = TB_COUNT_UPDOWN;
-    EPwm8Regs.TBCTL.bit.HSPCLKDIV = TB_DIV1;
-    EPwm8Regs.TBCTL.bit.CLKDIV = TB_DIV1;
+//     EPwm8Regs.TBCTL.bit.SYNCOSEL = TB_SYNC_IN;
+//     EPwm8Regs.TBCTL.bit.PHSEN = TB_ENABLE;
+//     EPwm8Regs.TBPHS.all = 0;
+//     EPwm8Regs.TBCTR = 0x0000;
+//     EPwm8Regs.TBPRD = EPWM_TIMER_TBPRD;
+//     EPwm8Regs.TBCTL.bit.CTRMODE = TB_COUNT_UPDOWN;
+//     EPwm8Regs.TBCTL.bit.HSPCLKDIV = TB_DIV1;
+//     EPwm8Regs.TBCTL.bit.CLKDIV = TB_DIV1;
 
-    EPwm8Regs.CMPCTL.bit.SHDWAMODE = CC_SHADOW;
-    EPwm8Regs.CMPCTL.bit.SHDWBMODE = CC_SHADOW;
-    EPwm8Regs.CMPCTL.bit.LOADAMODE = CC_CTR_ZERO;
-    EPwm8Regs.CMPCTL.bit.LOADBMODE = CC_CTR_ZERO;
-    EPwm8Regs.CMPA.bit.CMPA = 0;
+//     EPwm8Regs.CMPCTL.bit.SHDWAMODE = CC_SHADOW;
+//     EPwm8Regs.CMPCTL.bit.SHDWBMODE = CC_SHADOW;
+//     EPwm8Regs.CMPCTL.bit.LOADAMODE = CC_CTR_ZERO;
+//     EPwm8Regs.CMPCTL.bit.LOADBMODE = CC_CTR_ZERO;
+//     EPwm8Regs.CMPA.bit.CMPA = 0;
 
-    EPwm8Regs.AQCTLA.bit.ZRO = AQ_SET;
-    EPwm8Regs.AQCTLA.bit.CAU = AQ_CLEAR;
-    EPwm8Regs.AQCTLA.bit.CAD = AQ_SET;
-    EPwm8Regs.AQCTLB.bit.ZRO = AQ_CLEAR;
-    EPwm8Regs.AQCTLB.bit.CBU = AQ_SET;
-    EPwm8Regs.AQCTLB.bit.CBD = AQ_CLEAR;
+//     EPwm8Regs.AQCTLA.bit.ZRO = AQ_SET;
+//     EPwm8Regs.AQCTLA.bit.CAU = AQ_CLEAR;
+//     EPwm8Regs.AQCTLA.bit.CAD = AQ_SET;
+//     EPwm8Regs.AQCTLB.bit.ZRO = AQ_CLEAR;
+//     EPwm8Regs.AQCTLB.bit.CBU = AQ_SET;
+//     EPwm8Regs.AQCTLB.bit.CBD = AQ_CLEAR;
 
-    EPwm8Regs.DBCTL.bit.IN_MODE = 0;
-    EPwm8Regs.DBCTL.bit.POLSEL = 2;
-    EPwm8Regs.DBCTL.bit.OUT_MODE = 3;
-    EPwm8Regs.DBRED.bit.DBRED = 15;
-    EPwm8Regs.DBFED.bit.DBFED = 15;
+//     EPwm8Regs.DBCTL.bit.IN_MODE = 0;
+//     EPwm8Regs.DBCTL.bit.POLSEL = 2;
+//     EPwm8Regs.DBCTL.bit.OUT_MODE = 3;
+//     EPwm8Regs.DBRED.bit.DBRED = 15;
+//     EPwm8Regs.DBFED.bit.DBFED = 15;
 
-    EPwm8Regs.ETSEL.bit.INTSEL = ET_CTR_ZERO;
-    EPwm8Regs.ETSEL.bit.INTEN = 0;
-    EPwm8Regs.ETPS.bit.INTPRD = ET_1ST;
-}
+//     EPwm8Regs.ETSEL.bit.INTSEL = ET_CTR_ZERO;
+//     EPwm8Regs.ETSEL.bit.INTEN = 0;
+//     EPwm8Regs.ETPS.bit.INTPRD = ET_1ST;
+// }
