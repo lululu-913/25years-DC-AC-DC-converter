@@ -938,11 +938,11 @@ void KEY_Control(int key)
         switch (key)
         {
             case KEY1_PRESS:
-                I_PID_REF += 0.02f;
+                I_PID_REF += 0.01f;
                 if (I_PID_REF > 4.0f) I_PID_REF = 4.0f;
                 break;
             case KEY2_PRESS:
-                I_PID_REF -= 0.02f;
+                I_PID_REF -= 0.01f;
                 if (I_PID_REF < 0.1f) I_PID_REF = 0.1f;
                 break;
             case KEY3_PRESS:
