@@ -1,0 +1,17 @@
+# 文本文件统一使用 LF 换行符（跨平台兼容）
+*.c     text eol=lf
+*.h     text eol=lf
+*.asm   text eol=lf
+*.cmd   text eol=lf
+*.md    text eol=lf
+*.ps1   text eol=lf
+
+# Windows 批处理必须用 CRLF
+*.bat   text eol=crlf
+
+# 二进制文件不做换行转换
+*.out   binary
+*.obj   binary
+*.lib   binary
+*.bin   binary
+*.hex   binary
